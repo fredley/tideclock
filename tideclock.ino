@@ -159,7 +159,7 @@ void updateAngle() {
   } else {
     Serial.print("Stepping forward (back):");
     Serial.println(stepperPos - prevStepperPos);
-    stepper.step(-1 * ((4096 - prevStepperPos) + stepperPos));
+    stepper.step(-1 * ((stepsPerRevolution - prevStepperPos) + stepperPos));
   }
   prevStepperPos = stepperPos;
 }
