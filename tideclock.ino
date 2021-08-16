@@ -160,7 +160,7 @@ void httpRequest() {
   if (client.connect(hostName, 80)) {
     Serial.print("connecting...");
     // send the HTTP GET request:
-    client.println("GET /itchenor HTTP/1.1");
+    client.println("GET /seamills HTTP/1.1");
     client.println("Host: tides.mamota.net");
     client.println("User-Agent: ArduinoWiFi/1.1");
     client.println("Connection: close");
@@ -386,8 +386,8 @@ void resetConnection() {
 
 WifiCredentials defaultCreds () {
   WifiCredentials creds;
-  strcpy(creds.ssid, "");
-  strcpy(creds.pass, "");
+  strcpy(creds.ssid, "Kimbonet 2G");
+  strcpy(creds.pass, "shdbzqwa");
   creds.valid = true;
   return creds;
 }
