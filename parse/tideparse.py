@@ -29,7 +29,7 @@ LOCATIONS = {
         'parser': 'bbc',
     },
     'FORT_DENISON': {
-        'url': 'https://tides.willyweather.com.au/graphs/data.json?startDate=2021-8-16&graph=outlook:5,location:17797,series=order:0,id:sunrisesunset,type:forecast,series=order:1,id:tides,type:forecast',
+        'url': 'https://tides.willyweather.com.au/graphs/data.json?startDate={date}&graph=outlook:5,location:17797,series=order:0,id:sunrisesunset,type:forecast,series=order:1,id:tides,type:forecast',
         'path': 'fortdenison',
         'enabled': True,
         'parser': 'willy',
@@ -43,8 +43,6 @@ def main():
           fetch(location)
 
 def fetch(location):
-    # print(f'fetching {location}')
-
     cache_path = f'/tmp/tides/{location}.cache'
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 
@@ -149,9 +147,14 @@ def water_height(height_now, height_min, height_max, rising):
         return round(STEPS + STEPS * position) % (2 * STEPS)
     return round(STEPS - STEPS * position) % (2 * STEPS)
 
+
 def fetch_data(location):
-    # print(f'fetching {location} {LOCATIONS[location]["url"]}')
-    with request.urlopen(LOCATIONS[location]['url']) as response:
+    dct = LOCATIONS[location]
+    if dct['parser'] == 'willy':
+        url = dct['url'].format(date=(datetime.date.today() - datetime.timedelta(days=1)).isoformat())
+    else:
+        url = dct['url']
+    with request.urlopen(url) as response:
         html = response.read()
 
     return html.decode('utf8')
