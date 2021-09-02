@@ -1,161 +1,178 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body {
-                color: #434343;
-                font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
-                font-size: 14px;
-                line-height: 1.42857142857143;
-                padding: 20px;
-            }
+#include <ConfigManager.h>
+#include <Stepper.h>
+#include <SPI.h>
+#include <HTTPClient.h>
+#include <WiFi.h>
 
-            .container {
-                margin: 0 auto;
-                max-width: 400px;
-            }
+#define LIMIT_COM 27
+#define LIMIT_SWITCH 26
+#define STEPPER_PIN_1 16
+#define STEPPER_PIN_2 17
+#define STEPPER_PIN_3 5
+#define STEPPER_PIN_4 18
+#define LED_PIN 15
 
-            form .field-group {
-                box-sizing: border-box;
-                clear: both;
-                padding: 4px 0;
-                position: relative;
-                margin: 1px 0;
-                width: 100%;
-            }
+#define CYCLE_DELAY 1
+#define REQUEST_COUNTDOWN (1000 * 60 * 5) / CYCLE_DELAY
+#define stepsPerRevolution 2048
+#define CALIBRATED_POSITION 130
 
-            form .field-group > label {
-                color: #757575;
-                display: block;
-                margin: 0 0 5px 0;
-                padding: 5px 0 0;
-                position: relative;
-                word-wrap: break-word;
-            }
+struct Config {
+    char name[20];
+    char password[20];
+} config;
 
-            select,
-            input[type=text] {
-                background: #fff;
-                border: 1px solid #d0d0d0;
-                border-radius: 2px;
-                box-sizing: border-box;
-                color: #434343;
-                font-family: inherit;
-                font-size: inherit;
-                height: 2.14285714em;
-                line-height: 1.4285714285714;
-                padding: 4px 5px;
-                margin: 0;
-                width: 100%;
-            }
+int prevStepperPos = 0;
+int stepperPos = 0;
+int dataCountdown = 0;
+int previousBlink = 0;
+int blinkDuration = 500;
+bool ledOn = false;
 
-            select:focus,
-            input[type=text]:focus {
-                border-color: #4C669F;
-                outline: 0;
-            }
+Stepper stepper = Stepper(stepsPerRevolution, STEPPER_PIN_1, STEPPER_PIN_3, STEPPER_PIN_2, STEPPER_PIN_4);
+ConfigManager configManager;
+String serverPath = "http://tides.mamota.net/itchenor";
+bool calibrated = false;
 
-            .button-container {
-                box-sizing: border-box;
-                clear: both;
-                margin: 10px 0 0;
-                padding: 4px 0;
-                position: relative;
-                width: 100%;
-            }
+void setup() {
+  DEBUG_MODE = true;
+  pinMode(STEPPER_PIN_1, OUTPUT);
+  pinMode(STEPPER_PIN_2, OUTPUT);
+  pinMode(STEPPER_PIN_3, OUTPUT);
+  pinMode(STEPPER_PIN_4, OUTPUT);
+  pinMode(LIMIT_COM, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(LIMIT_SWITCH, INPUT_PULLDOWN);
+  
+  Serial.begin(115200);
+  stepper.setSpeed(10);
 
-            button[type=submit] {
-                box-sizing: border-box;
-                background: #f5f5f5;
-                border: 1px solid #bdbdbd;
-                border-radius: 2px;
-                color: #434343;
-                cursor: pointer;
-                display: inline-block;
-                font-family: inherit;
-                font-size: 14px;
-                font-variant: normal;
-                font-weight: 400;
-                height: 2.14285714em;
-                line-height: 1.42857143;
-                margin: 0;
-                padding: 4px 10px;
-                text-decoration: none;
-                vertical-align: baseline;
-                white-space: nowrap;
-            }
+  digitalWrite(LIMIT_COM, HIGH);
+  digitalWrite(LED_PIN, HIGH);
+  
+  // put your setup code here, to run once:
+  configManager.setAPName("Tide Clock");
+  configManager.setAPFilename("/index.html");
+  configManager.addParameter("name", config.name, 20);
+  configManager.addParameter("password", config.password, 20, set);
+  
+  configManager.setAPICallback(APICallback);
+  
+  configManager.begin(config);  
+//  configManager.clearWifiSettings(false);
+}
 
-            form {
-              opacity: 0;
-              transition: opacity 0.1s ease-in-out;
-            }
-            form.visible {
-              opacity: 1;
-            }
-            #done.visible,
-            #loading.visible {
-              display: block;
-            }
-            #done,
-            #loading {
-              font-size: 110%;
-              color: #777;
-              display: none;
-            }
-        </style>
-        <title>Tide Clock</title>
-        <script>
-        document.addEventListener("DOMContentLoaded", function(event) {
-          const httpRequest = new XMLHttpRequest()
-          const list = document.getElementById("ssid")
-          httpRequest.onreadystatechange = function(){
-            if (httpRequest.readyState !== XMLHttpRequest.DONE) return
-            if (httpRequest.status !== 200) return
-            JSON.parse(httpRequest.responseText)
-              .filter(d => d.ssid)
-              .sort((a, b) => b.strength - a.strength)
-              .forEach(d => {
-                const option = document.createElement("option")
-                const text = document.createTextNode(d.ssid)
-                option.appendChild(text)
-                list.appendChild(option)
-              })
-            document.getElementById("form").classList.add("visible")
-            document.getElementById("loading").classList.remove("visible")
-          };
-          httpRequest.open('GET', '/scan', true);
-          httpRequest.send();
-        });
+bool requested = false;
 
-        function whenSubmit(event) {
-          document.getElementById("form").classList.remove("visible")
-          document.getElementById("done").classList.add("visible")
-        }
+void loop() {
 
-        const form = document.getElementById('form');
-        form.addEventListener('submit', whenSubmit);
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <h1 style="text-align: center;">Tide Clock</h1>
-            <p>Select your wifi network and enter the password to connect up your Tide Clock.</p>
-            <p id="loading" class="visible">Scanning...</p>
-            <p id="done" class="">Connecting...</p>
-            <form method="post" action="/" id="form">
-                <div class="field-group">
-                    <label>Network</label>
-                    <select name="ssid" type="text" id="ssid"></select>
-                </div>
-                <div class="field-group">
-                    <label>Password</label>
-                    <input name="password" type="text" size="64">
-                </div>
-                <div class="button-container">
-                    <button type="submit">Connect</button>
-                </div>
-            </form>
-        </div>
-    </body>
-</html>
+  calibrateStepper();
+  
+  configManager.loop();
+  if(configManager.wifiConnected()){
+    digitalWrite(LED_PIN, LOW);
+    if(!calibrated) {
+      calibrateStepper();
+    }
+    
+    if(dataCountdown == 0) {
+      httpRequest();
+      dataCountdown = REQUEST_COUNTDOWN;
+    } else {
+      dataCountdown--;
+    }
+  } else {
+    // Blink the LED
+    int timeNow = millis();
+    if ((timeNow - previousBlink > blinkDuration) || (previousBlink > timeNow)) {
+      if(ledOn) {
+        digitalWrite(LED_PIN, LOW);
+      } else {
+        digitalWrite(LED_PIN, HIGH);
+      }
+      ledOn = !ledOn;
+      previousBlink = timeNow;
+    }
+  }
+}
+
+void httpRequest() {
+  Serial.println("Requesting...");
+  HTTPClient http;
+  http.begin(serverPath.c_str());
+  
+  int httpResponseCode = http.GET();
+  
+  if (httpResponseCode>0) {
+    String payload = http.getString();
+    Serial.print("Payload: ");
+    Serial.println(payload);
+    stepperPos = payload.toInt();
+    updateAngle();
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  // Free resources
+  http.end();
+}
+
+
+void updateAngle() {
+  Serial.print("Stepper Pos: ");
+  Serial.println(stepperPos);
+  Serial.print("Previous Stepper Pos: ");
+  Serial.println(prevStepperPos);
+  if (stepperPos == prevStepperPos){
+    return;
+  }else if (stepperPos > prevStepperPos) {
+    Serial.print("Stepping forward:");
+    Serial.println(stepperPos - prevStepperPos);
+    stepper.step(stepperPos - prevStepperPos);
+  } else {
+    Serial.print("Stepping forward (positive to negative):");
+    Serial.println(stepperPos - prevStepperPos);
+    stepper.step((stepsPerRevolution - prevStepperPos) + stepperPos);
+  }
+  prevStepperPos = stepperPos;
+}
+
+void calibrateStepper() {
+  Serial.println("Calibrate");
+  while(digitalRead(LIMIT_SWITCH) == LOW){
+//    Serial.print("L");
+    stepper.step(1);
+  }
+  while(true){
+    stepper.step(1);
+//    Serial.print("H");
+    if(digitalRead(LIMIT_SWITCH) == LOW){
+//      Serial.println("L");
+      break;
+    }
+  }
+//  Serial.println("ZERO");
+//  while(true){
+//    if(digitalRead(LIMIT_SWITCH) == LOW){
+//      Serial.print("L");
+//    } else {
+//      Serial.println("H");
+//    }
+//    delay(500);
+//  }
+  prevStepperPos = CALIBRATED_POSITION;
+//  stepperPos = 0;
+//  updateAngle();
+//  Serial.println("Zero position");
+//  delay(100000);
+//  stepper.step(stepsPerRevolution);
+//  Serial.println("Full rotation");
+//  delay(5000);
+  calibrated = true;
+//  digitalWrite(LED_PIN, LOW);
+}
+
+void APICallback(WebServer *server) {
+  configManager.stopWebserver();
+}
