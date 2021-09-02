@@ -1,0 +1,17 @@
+[Unit]
+Description=tides
+After=syslog.target
+
+[Service]
+ExecStart=/opt/tideparse/env/bin/uwsgi \
+        --ini /opt/tideparse/uwsgi.ini
+User=www-data
+Group=www-data
+Restart=on-failure
+KillSignal=SIGQUIT
+Type=notify
+StandardError=syslog
+NotifyAccess=all
+
+[Install]
+WantedBy=multi-user.target
